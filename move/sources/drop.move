@@ -7,12 +7,6 @@ module drops::drop {
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
 
-    /// Registry for drops in a collection (shared object)
-    public struct DropsRegistry has key {
-        id: UID,                                // Unique object ID
-        drops: vector<ID>,                      // All drop IDs; index = sequence_number
-    }
-
     /// Individual drop struct - represents a single drop NFT token
     public struct Drop has key, store {
         id: UID,                                // Unique object ID
