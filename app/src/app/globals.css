@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 210 100% 15%;
+    --foreground: 0 0% 100%;
+    
+    /* Sea - Primary */
+    --primary: 210 100% 65%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Ocean */
+    --ocean: 210 100% 10%;
+    
+    /* Aqua */
+    --aqua: 204 100% 87%;
+    
+    /* Deep Ocean */
+    --deep-ocean: 213 89% 6%;
+    
+    /* Cloud */
+    --cloud: 0 0% 100%;
+    
+    /* UI Colors derived from the main palette */
+    --card: 213 89% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 213 89% 6%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 210 100% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 100% 15%;
+    --muted-foreground: 204 100% 87%;
+    --accent: 204 100% 87%;
+    --accent-foreground: 213 89% 6%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 100% 20%;
+    --input: 210 100% 20%;
+    --ring: 210 100% 65%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 213 89% 6%;
+    --foreground: 0 0% 100%;
+    
+    /* Sea - Primary */
+    --primary: 210 100% 65%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Ocean */
+    --ocean: 210 100% 10%;
+    
+    /* Aqua */
+    --aqua: 204 100% 87%;
+    
+    /* Deep Ocean */
+    --deep-ocean: 213 89% 6%;
+    
+    /* Cloud */
+    --cloud: 0 0% 100%;
+    
+    /* UI Colors derived from the main palette */
+    --card: 213 89% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 213 89% 6%;
+    --popover-foreground: 0 0% 100%;
+    --secondary: 210 100% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 100% 15%;
+    --muted-foreground: 204 100% 87%;
+    --accent: 204 100% 87%;
+    --accent-foreground: 213 89% 6%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 100% 20%;
+    --input: 210 100% 20%;
+    --ring: 210 100% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-deep-ocean text-cloud;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+}
