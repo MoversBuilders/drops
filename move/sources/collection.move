@@ -70,7 +70,7 @@ module drops::collection {
 
     // === Functions ===
 
-    fun with_base_url(suffix: String): String {
+    public(package) fun with_base_url(suffix: String): String {
         let mut base = std::string::utf8(BASE_URL);
         std::string::append(&mut base, suffix);
         base
