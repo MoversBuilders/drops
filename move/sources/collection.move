@@ -1,20 +1,24 @@
 module drops::collection {
 
     use std::string::String;
-    use sui::url::{Self, Url};
     use sui::table::{Self, Table};
+    use sui::package;
+    use sui::display;
 
     // Error codes
     const EInvalidFlags: u64 = 0;
     const EInvalidMaxSupply: u64 = 1;
     const EInvalidMintTimes: u64 = 2;
 
+    // Base URL for all collection-related links
+    const BASE_URL: vector<u8> = b"https://drops.movers.builders/";
+
     /*
     Collection Flags (u16 bits):
     0:      ONE_PER_ADDRESS             - Only one drop per address
     1:      SOULBOUND                   - Drops cannot be transferred
-    2:      REUQUIRES_MERKLE_PROOF      - Drop minting requires a merkle proof
-    3:      REQUIRES_SECRET             - Drop minting requires zk proof of a secret
+    2:      REQUIRES_SECRET             - Drop minting requires zk proof of a secret
+    3:      REUQUIRES_MERKLE_PROOF      - Drop minting requires a merkle proof
     4:      DROP_WITH_RANDOMNESS        - Drops include on-chain random attribute
     5-15:   RESERVED                    - Reserved for future use
     */
@@ -24,6 +28,7 @@ module drops::collection {
         id: UID,                                // Unique object ID
         name: String,                           // Collection name
         description: String,                    // Collection description
+        creator: address,                       // Collection creator
         coords: Option<Coordinates>,            // Optional geographic coordinates
         flags: u16,                             // Bit flags (see above)
         max_supply: u64,                        // Max supply, defaults to u32::MAX
@@ -60,16 +65,70 @@ module drops::collection {
         merkle_root: vector<u8>,                // Merkle root for membership proofs
     }
 
+    /// One-Time-Witness for the module
+    public struct COLLECTION has drop {}
+
     // === Functions ===
 
+    fun with_base_url(suffix: String): String {
+        let mut base = std::string::utf8(BASE_URL);
+        std::string::append(&mut base, suffix);
+        base
+    }
+
     /// Initialize the module
-    fun init(ctx: &mut TxContext) {
+    fun init(otw: COLLECTION, ctx: &mut TxContext) {
         // Create and share the collections registry
         let collections_registry = CollectionsRegistry {
             id: object::new(ctx),
             collections: table::new<u64, ID>(ctx)
         };
         transfer::share_object(collections_registry);
+
+        // Create Display for Collection type
+        let publisher = package::claim(otw, ctx);
+        let keys = vector[
+            b"name".to_string(),
+            b"description".to_string(),
+            b"url".to_string(),
+            b"image_url".to_string(),
+            b"project_url".to_string(),
+            b"creator".to_string(),
+            b"flags".to_string(),
+            b"coords".to_string(),
+            b"max_supply".to_string(),
+            b"mint_start_time".to_string(),
+            b"mint_stop_time".to_string(),
+            b"groth16_secret".to_string(),
+            b"groth16_merkle".to_string()
+        ];
+
+        let values = vector[
+            b"{name}".to_string(),
+            b"{description}".to_string(),
+            with_base_url(b"/drop/{url}".to_string()),
+            with_base_url(b"/img/{image_url}".to_string()),
+            BASE_URL.to_string(),
+            b"{creator}".to_string(),
+            b"{flags}".to_string(),
+            b"{coords}".to_string(),
+            b"{max_supply}".to_string(),
+            b"{mint_start_time}".to_string(),
+            b"{mint_stop_time}".to_string(),
+            b"{groth16_secret}".to_string(),
+            b"{groth16_merkle}".to_string()
+        ];
+
+        let mut display = display::new_with_fields<Collection>(
+            &publisher, keys, values, ctx
+        );
+
+        // Commit first version of Display to apply changes.
+        display::update_version(&mut display);
+
+        // Transfer publisher and display to deployer
+        transfer::public_transfer(publisher, tx_context::sender(ctx));
+        transfer::public_transfer(display, tx_context::sender(ctx));
     }
 
     public entry fun create_collection(
@@ -84,7 +143,7 @@ module drops::collection {
         mint_stop_time: u64,
         ctx: &mut TxContext
     ) {
-        // Check if either REQUIRES_MERKLE_PROOF (bit 2) or REQUIRES_SECRET (bit 3) is set
+        // Check if either REQUIRES_SECRET (bit 2) or REQUIRES_MERKLE_PROOF (bit 3) is set
         // In that case, use the appropriate constructors
         assert!(flags & 0x000C == 0, EInvalidFlags);
 
@@ -106,6 +165,7 @@ module drops::collection {
             id: object::new(ctx),
             name,
             description,
+            creator: tx_context::sender(ctx),
             coords: option::some(coords),
             flags,
             max_supply,
