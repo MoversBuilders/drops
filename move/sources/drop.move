@@ -7,6 +7,8 @@ module drops::drop {
     use sui::event;
     use drops::helpers::{with_base_url};
 
+    // === Object Structs ===
+
     /// Individual drop struct - represents a single drop NFT token
     public struct Drop has key, store {
         id: UID,                                // Unique object ID
@@ -109,6 +111,7 @@ module drops::drop {
     }
 
     /// Transfer a drop to a new owner
+    /// Checks are done in the collection module
     public(package) fun transfer(
         drop: Drop,
         new_owner: address,

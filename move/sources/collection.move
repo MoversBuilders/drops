@@ -8,7 +8,8 @@ module drops::collection {
     use drops::drop::Drop;
     use drops::helpers::{with_base_url, get_base_url};
 
-    // === Error codes ===
+    // === Error Codes ===
+
     // Collection creation errors
     const EInvalidFunctionForFlags: u64 = 1;
     const EInvalidMaxSupply: u64 = 2;
@@ -21,34 +22,8 @@ module drops::collection {
     const EWrongDropsRegistry: u64 = 7;
 
     const ENotImplemented: u64 = 99;
-
-    /*
-    Collection Flags (u16 bits):
-    0:      ONE_PER_ADDRESS             - Only one drop per address
-    1:      SOULBOUND                   - Drops cannot be transferred
-    2:      REQUIRES_SECRET             - Drop minting requires zk proof of a secret
-    3:      REUQUIRES_MERKLE_PROOF      - Drop minting requires a merkle proof
-    4:      DROP_WITH_RANDOMNESS        - Drops include on-chain random attribute
-    5-15:   RESERVED                    - Reserved for future use
-    */
-
-    /// Collection struct - represents a set of drops (NFTs)
-    public struct Collection has key, store {
-        id: UID,                                // Unique object ID
-        name: String,                           // Collection name
-        description: String,                    // Collection description
-        creator: address,                       // Collection creator
-        drops_registry: ID,                     // Drops registry
-        coords: Option<Coordinates>,            // Optional geographic coordinates
-        flags: u16,                             // Bit flags (see above)
-        max_supply: u64,                        // Max supply, defaults to u64::MAX
-        mint_start_time: u64,                   // Minting start time (unix timestamp), defaults to creation time
-        mint_stop_time: u64,                    // Optional minting stop time, defaults to u64::MAX
-        groth16_secret: Option<Groth16Config>,  // Optional Groth16 config for secret proofs
-        groth16_merkle: Option<Groth16MerkleConfig>,// Optional Groth16 config for Merkle proofs
-    }
     
-    // === Registry structs ===
+    // === Registry Structs ===
 
     /// Global registry of all collections (shared object)
     public struct CollectionsRegistry has key {
@@ -63,7 +38,32 @@ module drops::collection {
         drops: Table<u64, ID>,
     }
 
-    // === Structs ===
+    // === Object Structs ===
+
+    /// Collection struct - represents a set of drops (NFTs)
+    public struct Collection has key, store {
+        id: UID,                                // Unique object ID
+        name: String,                           // Collection name
+        description: String,                    // Collection description
+        creator: address,                       // Collection creator
+        drops_registry: ID,                     // Drops registry
+        coords: Option<Coordinates>,            // Optional geographic coordinates
+        /*
+        Collection Flags (u16 bits):
+        0:      ONE_PER_ADDRESS             - Only one drop per address
+        1:      SOULBOUND                   - Drops cannot be transferred
+        2:      REQUIRES_SECRET             - Drop minting requires zk proof of a secret
+        3:      REUQUIRES_MERKLE_PROOF      - Drop minting requires a merkle proof
+        4:      DROP_WITH_RANDOMNESS        - Drops include on-chain random attribute
+        5-15:   RESERVED                    - Reserved for future use
+        */
+        flags: u16,                             // Bit flags (see above)
+        max_supply: u64,                        // Max supply, defaults to u64::MAX
+        mint_start_time: u64,                   // Minting start time (unix timestamp), defaults to creation time
+        mint_stop_time: u64,                    // Optional minting stop time, defaults to u64::MAX
+        groth16_secret: Option<Groth16Config>,  // Optional Groth16 config for secret proofs
+        groth16_merkle: Option<Groth16MerkleConfig>,// Optional Groth16 config for Merkle proofs
+    }
 
     /// Geographic coordinates scaled by 1e6 (unsigned fixed-point)
     /// Example: (40.6387° N, 22.9435° E) = (40_638_700, 22_943_500)
