@@ -1,12 +1,13 @@
 module drops::collection {
 
-    use sui::object::{Self, UID};
     use std::string::String;
-    use sui::url::Url;
-    use sui::vec_map::{Self, VecMap};
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
+    use sui::url::{Self, Url};
     use sui::table::{Self, Table};
+
+    // Error codes
+    const EInvalidFlags: u64 = 0;
+    const EInvalidMaxSupply: u64 = 1;
+    const EInvalidMintTimes: u64 = 2;
 
     /*
     Collection Flags (u16 bits):
@@ -23,15 +24,11 @@ module drops::collection {
         id: UID,                                // Unique object ID
         name: String,                           // Collection name
         description: String,                    // Collection description
-        url: Url,                               // Main URL
-        image_url: Url,                         // Image URL
-        project_url: Url,                       // Project URL
         coords: Option<Coordinates>,            // Optional geographic coordinates
         flags: u16,                             // Bit flags (see above)
-        max_supply: u32,                        // Max supply, defaults to u32::MAX
-        mint_start_time: u32,                   // Minting start time (unix timestamp), defaults to creation time
-        mint_stop_time: u32,                    // Optional minting stop time, defaults to u32::MAX
-        current_supply: u32,                    // Counter of current minted drops
+        max_supply: u64,                        // Max supply, defaults to u32::MAX
+        mint_start_time: u64,                   // Minting start time (unix timestamp), defaults to creation time
+        mint_stop_time: u64,                    // Optional minting stop time, defaults to u32::MAX
         groth16_secret: Option<Groth16Config>,  // Optional Groth16 config for secret proofs
         groth16_merkle: Option<Groth16MerkleConfig>,// Optional Groth16 config for Merkle proofs
     }
@@ -39,7 +36,7 @@ module drops::collection {
     /// Global registry of all collections (shared object)
     public struct CollectionsRegistry has key {
         id: UID,                                // Unique object ID
-        collections: Table<u32, ID>,                // All collection IDs; index = sequence_number
+        collections: Table<u64, ID>,            // All collection IDs; index = sequence_number
     }
 
     /// Geographic coordinates scaled by 1e6 (unsigned fixed-point)
@@ -70,8 +67,57 @@ module drops::collection {
         // Create and share the collections registry
         let collections_registry = CollectionsRegistry {
             id: object::new(ctx),
-            collections: table::new<u32, ID>(ctx)
+            collections: table::new<u64, ID>(ctx)
         };
         transfer::share_object(collections_registry);
+    }
+
+    public entry fun create_collection(
+        registry: &mut CollectionsRegistry,
+        name: String,
+        description: String,
+        coords_lat: u32,
+        coords_lon: u32,
+        flags: u16,
+        max_supply: u64,
+        mint_start_time: u64,
+        mint_stop_time: u64,
+        ctx: &mut TxContext
+    ) {
+        // Check if either REQUIRES_MERKLE_PROOF (bit 2) or REQUIRES_SECRET (bit 3) is set
+        // In that case, use the appropriate constructors
+        assert!(flags & 0x000C == 0, EInvalidFlags);
+
+        // Validate max supply and mint time window inputs
+        assert!(max_supply > 0, EInvalidMaxSupply);
+        assert!(mint_start_time <= mint_stop_time, EInvalidMintTimes);
+        assert!(mint_start_time >= (tx_context::epoch(ctx)), EInvalidMintTimes);
+
+        let groth16_secret = option::none();
+        let groth16_merkle = option::none();
+
+        let coords = Coordinates {
+            lat: coords_lat,
+            lon: coords_lon,
+        };
+
+        // Create the collection
+        let collection = Collection {
+            id: object::new(ctx),
+            name,
+            description,
+            coords: option::some(coords),
+            flags,
+            max_supply,
+            mint_start_time,
+            mint_stop_time,
+            groth16_secret,
+            groth16_merkle,
+        };
+
+        // Add to registry and transfer
+        let sequence_number = (table::length(&registry.collections));
+        table::add(&mut registry.collections, sequence_number, object::id(&collection));
+        transfer::transfer(collection, tx_context::sender(ctx));
     }
 }
