@@ -2,16 +2,25 @@ module drops::collection {
 
     use std::string::String;
     use sui::table::{Self, Table};
+    use sui::vec_map::{Self};
     use sui::package;
     use sui::display;
+    use drops::drop::Drop;
+    use drops::helpers::{with_base_url, get_base_url};
 
-    // Error codes
-    const EInvalidFlags: u64 = 0;
-    const EInvalidMaxSupply: u64 = 1;
-    const EInvalidMintTimes: u64 = 2;
+    // === Error codes ===
+    // Collection creation errors
+    const EInvalidFunctionForFlags: u64 = 1;
+    const EInvalidMaxSupply: u64 = 2;
+    const EInvalidMintTimes: u64 = 3;
 
-    // Base URL for all collection-related links
-    const BASE_URL: vector<u8> = b"https://drops.movers.builders/";
+    // Minting errors
+    const EOnePerAddress: u64 = 4;
+    const EMaxSupplyReached: u64 = 5;
+    const EMintWindowClosed: u64 = 6;
+    const EWrongDropsRegistry: u64 = 7;
+
+    const ENotImplemented: u64 = 99;
 
     /*
     Collection Flags (u16 bits):
@@ -29,23 +38,35 @@ module drops::collection {
         name: String,                           // Collection name
         description: String,                    // Collection description
         creator: address,                       // Collection creator
+        drops_registry: ID,                     // Drops registry
         coords: Option<Coordinates>,            // Optional geographic coordinates
         flags: u16,                             // Bit flags (see above)
-        max_supply: u64,                        // Max supply, defaults to u32::MAX
+        max_supply: u64,                        // Max supply, defaults to u64::MAX
         mint_start_time: u64,                   // Minting start time (unix timestamp), defaults to creation time
-        mint_stop_time: u64,                    // Optional minting stop time, defaults to u32::MAX
+        mint_stop_time: u64,                    // Optional minting stop time, defaults to u64::MAX
         groth16_secret: Option<Groth16Config>,  // Optional Groth16 config for secret proofs
         groth16_merkle: Option<Groth16MerkleConfig>,// Optional Groth16 config for Merkle proofs
     }
     
+    // === Registry structs ===
+
     /// Global registry of all collections (shared object)
     public struct CollectionsRegistry has key {
         id: UID,                                // Unique object ID
         collections: Table<u64, ID>,            // All collection IDs; index = sequence_number
     }
 
+    /// Registry to track drops per collection (shared object)
+    public struct DropsRegistry has key {
+        id: UID,
+        collection_id: ID,
+        drops: Table<u64, ID>,
+    }
+
+    // === Structs ===
+
     /// Geographic coordinates scaled by 1e6 (unsigned fixed-point)
-    /// Example: (40.7128° N, 74.0060° W) = (40_712_800, 180_000_000 - 74_006_000)
+    /// Example: (40.6387° N, 22.9435° E) = (40_638_700, 22_943_500)
     public struct Coordinates has store, copy, drop {
         lat: u32,  // Latitude scaled by 1e6 (0 to 180_000_000)
         lon: u32,  // Longitude scaled by 1e6 (0 to 360_000_000)
@@ -69,12 +90,6 @@ module drops::collection {
     public struct COLLECTION has drop {}
 
     // === Functions ===
-
-    public(package) fun with_base_url(suffix: String): String {
-        let mut base = std::string::utf8(BASE_URL);
-        std::string::append(&mut base, suffix);
-        base
-    }
 
     /// Initialize the module
     fun init(otw: COLLECTION, ctx: &mut TxContext) {
@@ -108,7 +123,7 @@ module drops::collection {
             b"{description}".to_string(),
             with_base_url(b"/collection/{id}".to_string()),
             with_base_url(b"/collection/img/{id}".to_string()),
-            BASE_URL.to_string(),
+            get_base_url(),
             b"{creator}".to_string(),
             b"{flags}".to_string(),
             b"{coords}".to_string(),
@@ -126,13 +141,14 @@ module drops::collection {
         // Commit first version of Display to apply changes.
         display::update_version(&mut display);
 
-        // Transfer publisher and display to deployer
+        // Transfer publisher and display to publisher
         transfer::public_transfer(publisher, tx_context::sender(ctx));
         transfer::public_transfer(display, tx_context::sender(ctx));
     }
 
+    /// Create a new collection
     public entry fun create(
-        registry: &mut CollectionsRegistry,
+        collections_registry: &mut CollectionsRegistry,
         name: String,
         description: String,
         coords_lat: u32,
@@ -145,7 +161,7 @@ module drops::collection {
     ) {
         // Check if either REQUIRES_SECRET (bit 2) or REQUIRES_MERKLE_PROOF (bit 3) is set
         // In that case, use the appropriate constructors
-        assert!(flags & 0x000C == 0, EInvalidFlags);
+        assert!(flags & 0x000C == 0, EInvalidFunctionForFlags);
 
         // Validate max supply and mint time window inputs
         assert!(max_supply > 0, EInvalidMaxSupply);
@@ -160,9 +176,11 @@ module drops::collection {
             lon: coords_lon,
         };
 
-        // Create the collection
-        let collection = Collection {
+        // 1. Create the collection
+        // Use a dummy drops_registry ID to bypass circular dependency
+        let mut collection = Collection {
             id: object::new(ctx),
+            drops_registry: object::id(collections_registry), // dummy, will update below
             name,
             description,
             creator: tx_context::sender(ctx),
@@ -175,9 +193,63 @@ module drops::collection {
             groth16_merkle,
         };
 
-        // Add to registry and transfer
-        let sequence_number = (table::length(&registry.collections));
-        table::add(&mut registry.collections, sequence_number, object::id(&collection));
+        // 2. Create the drops registry
+        let drops_registry = DropsRegistry {
+            id: object::new(ctx),
+            collection_id: object::id(&collection),
+            drops: table::new<u64, ID>(ctx),
+        };
+
+        // 3. Update the collection to reference the correct drops_registry ID
+        collection.drops_registry = object::id(&drops_registry);
+
+        // 4. Transfer the drops registry
+        transfer::share_object(drops_registry);
+
+        // 5. Add to CollectionsRegistry and transfer
+        let sequence_number = table::length(&collections_registry.collections);
+        table::add(&mut collections_registry.collections, sequence_number, object::id(&collection));
         transfer::transfer(collection, tx_context::sender(ctx));
+    }
+
+    /// Mint a drop
+    public entry fun mint(
+        collection: &Collection,
+        drops_registry: &mut DropsRegistry,
+        ctx: &mut TxContext
+    ) {
+        // If ONE_PER_ADDRESS (bit 0) is set, check if the address already has a drop
+        assert!(collection.flags & 0x0001 == 0, ENotImplemented);
+
+        // Check if either REQUIRES_SECRET (bit 2) or REQUIRES_MERKLE_PROOF (bit 3) is set
+        // If so, we need to use the appropriate mint function
+        assert!(collection.flags & 0x000C == 0, EInvalidFunctionForFlags);
+
+        // Check if collection requires a randomness
+        assert!(collection.flags & 0x0008 == 0, ENotImplemented);
+
+        // Check that the collection has enough supply and is in the minting window
+        assert!(collection.max_supply > table::length(&drops_registry.drops), EMaxSupplyReached);
+        let now = tx_context::epoch(ctx);
+        assert!(collection.mint_start_time <= now && collection.mint_stop_time >= now, EMintWindowClosed);
+
+        // Check that the collection and drops registry are correctly linked
+        assert!(collection.drops_registry == object::id(drops_registry), EWrongDropsRegistry);
+        assert!(drops_registry.collection_id == object::id(collection), EWrongDropsRegistry);
+
+        let sequence_number = table::length(&drops_registry.drops);
+        
+        // Delegate to drop::mint
+        let drop: Drop = drops::drop::mint(
+            object::id(collection),
+            sequence_number,
+            option::none(),
+            vec_map::empty(),
+            ctx,
+        );
+
+        // Add the drop to the drops registry
+        table::add(&mut drops_registry.drops, sequence_number, object::id(&drop));
+        transfer::public_transfer(drop, tx_context::sender(ctx));
     }
 }

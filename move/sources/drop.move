@@ -4,15 +4,15 @@ module drops::drop {
     use sui::vec_map::{VecMap};
     use sui::display;
     use sui::package;
-    use drops::collection::{with_base_url};
     use sui::event;
+    use drops::helpers::{with_base_url};
 
     /// Individual drop struct - represents a single drop NFT token
     public struct Drop has key, store {
         id: UID,                                // Unique object ID
         collection_id: ID,                      // Parent collection
-        sequence_number: u32,                   // Drop's sequence number in collection
-        mint_timestamp: u32,                    // Minting timestamp (unix)
+        sequence_number: u64,                   // Drop's sequence number in collection
+        mint_timestamp: u64,                    // Minting timestamp (unix)
         randomness: Option<u16>,                // Optional on-chain randomness
         attributes: VecMap<String, vector<u8>>, // Arbitrary attributes (key-value)
     }
@@ -83,7 +83,7 @@ module drops::drop {
     /// Mint a new drop
     public(package) fun mint(
         collection_id: ID,
-        sequence_number: u32,
+        sequence_number: u64,
         randomness: Option<u16>,
         attributes: VecMap<String, vector<u8>>,
         ctx: &mut TxContext
@@ -92,7 +92,7 @@ module drops::drop {
             id: object::new(ctx),
             collection_id,
             sequence_number,
-            mint_timestamp: (tx_context::epoch(ctx) as u32),
+            mint_timestamp: tx_context::epoch(ctx),
             randomness: randomness,
             attributes,
         };
