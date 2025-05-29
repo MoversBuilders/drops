@@ -1,11 +1,8 @@
 module drops::drop {
 
-    use sui::object::{Self, UID};
     use std::string::String;
-    use sui::url::Url;
-    use sui::vec_map::{Self, VecMap};
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
+    use sui::vec_map::{VecMap};
+    use drops::collection::{Collection};
 
     /// Individual drop struct - represents a single drop NFT token
     public struct Drop has key, store {
@@ -15,5 +12,22 @@ module drops::drop {
         mint_timestamp: u32,                    // Minting timestamp (unix)
         randomness: Option<u16>,                // Optional on-chain randomness
         attributes: VecMap<String, vector<u8>>, // Arbitrary attributes (key-value)
+    }
+
+    public(package) fun mint(
+        collection: &Collection,
+        sequence_number: u32,
+        randomness: Option<u16>,
+        attributes: VecMap<String, vector<u8>>,
+        ctx: &mut TxContext
+    ): Drop {
+        Drop {
+            id: object::new(ctx),
+            collection_id: object::id(collection),
+            sequence_number,
+            mint_timestamp: (tx_context::epoch(ctx) as u32),
+            randomness: randomness,
+            attributes,
+        }
     }
 }

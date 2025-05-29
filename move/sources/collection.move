@@ -106,8 +106,8 @@ module drops::collection {
         let values = vector[
             b"{name}".to_string(),
             b"{description}".to_string(),
-            with_base_url(b"/drop/{url}".to_string()),
-            with_base_url(b"/img/{image_url}".to_string()),
+            with_base_url(b"/collection/{id}".to_string()),
+            with_base_url(b"/collection/img/{id}".to_string()),
             BASE_URL.to_string(),
             b"{creator}".to_string(),
             b"{flags}".to_string(),
@@ -131,7 +131,7 @@ module drops::collection {
         transfer::public_transfer(display, tx_context::sender(ctx));
     }
 
-    public entry fun create_collection(
+    public entry fun create(
         registry: &mut CollectionsRegistry,
         name: String,
         description: String,
