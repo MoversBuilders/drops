@@ -1,0 +1,18 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Compiled files
+dist/
+
+# Dependency directory
+node_modules
+
+# Optional npm cache directory
+.npm
+
+typings/
+lib/*.js
+test/*.js
+*.map
