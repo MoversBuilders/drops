@@ -45,6 +45,7 @@ module drops::collection {
         id: UID,                                // Unique object ID
         name: String,                           // Collection name
         description: String,                    // Collection description
+        img: Option<String>,                    // Collection image
         creator: address,                       // Collection creator
         drops_registry: ID,                     // Drops registry
         coords: Option<Coordinates>,            // Optional geographic coordinates
@@ -151,6 +152,7 @@ module drops::collection {
         collections_registry: &mut CollectionsRegistry,
         name: String,
         description: String,
+        img: Option<String>,
         coords_lat: u32,
         coords_lon: u32,
         flags: u16,
@@ -184,6 +186,7 @@ module drops::collection {
             drops_registry: object::id(collections_registry), // dummy, will update below
             name,
             description,
+            img,
             creator: tx_context::sender(ctx),
             coords: option::some(coords),
             flags,
