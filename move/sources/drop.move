@@ -8,6 +8,11 @@ module drops::drop {
     use drops::helpers::{with_base_url};
     use sui::table::{Self, Table};
 
+    // === Error Codes ===
+    const EDropNotFound: u64 = 101;
+
+    const ENotImplemented: u64 = 199;
+
     // === Registry Structs ===
     
     /// Registry to track drops owned by an address, grouped by collection
@@ -53,7 +58,7 @@ module drops::drop {
 
     /// Initialize the drop module
     fun init(otw: DROP, ctx: &mut TxContext) {
-        // Create and share the address drops registry
+        // Create and share the AddressDropsRegistry (tracks drops owned by an address grouped by collection)
         let address_drops_registry = AddressDropsRegistry {
             id: object::new(ctx),
             drops: table::new<address, Table<ID, vector<ID>>>(ctx),
@@ -150,21 +155,42 @@ module drops::drop {
     /// Transfer a drop to a new owner
     /// Checks are done in the collection module
     public(package) fun transfer(
+        address_drops_registry: &mut AddressDropsRegistry,
         drop: Drop,
-        new_owner: address,
+        receiver: address,
         ctx: &mut TxContext
     ) {
-        let old_owner = object::uid_to_address(&drop.id);
+        let sender = object::uid_to_address(&drop.id);
+
+        let drops_registry = &mut address_drops_registry.drops;
+
+        // 1. Remove the drop from the old owner's drops vector for the collection
+        let drops_of_sender_by_collection = table::borrow_mut(drops_registry, sender);
+        let sender_drops_vector = table::borrow_mut(drops_of_sender_by_collection, drop.collection_id);
+        // Find the drop index in the vector and remove it
+        let index = vector::find_index!(sender_drops_vector, |id| id == object::id(&drop));
+        assert!(option::is_some(&index), EDropNotFound); // Ensure drop exists
+        sender_drops_vector.remove(option::destroy_some(index));
+
+        // 2. Add the drop to the new owner's drops vector for the collection
+        let drops_of_receiver_by_collection = table::borrow_mut(drops_registry, receiver);
+        // If receiver has no drops for this collection, create a new table
+        if (!table::contains(drops_of_receiver_by_collection, drop.collection_id)) {
+            table::add(drops_of_receiver_by_collection, drop.collection_id, vector::empty<ID>());
+        };
+        // Add the drop to the receiver's drops vector for the collection
+        let receiver_drops_vector = table::borrow_mut(drops_of_receiver_by_collection, drop.collection_id);
+        receiver_drops_vector.push_back(object::id(&drop));
 
         // Emit transfer event
         event::emit(DropTransferredEvent {
             drop_id: object::id(&drop),
-            from: old_owner,
-            to: new_owner,
+            from: sender,
+            to: receiver,
             timestamp: tx_context::epoch(ctx)
         });
 
         // Transfer the drop
-        transfer::public_transfer(drop, new_owner);
+        transfer::public_transfer(drop, receiver);
     }
 }
