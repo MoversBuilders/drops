@@ -1,6 +1,3 @@
-export * from './types';
+import { ENV } from "./env";
 
-export type {
-  Drop,
-  Collection,
-} from './types'; 
+export * from './types';
