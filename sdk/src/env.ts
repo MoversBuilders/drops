@@ -6,7 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   SUI_NETWORK: z.string(),
   DROPS_PACKAGE_ID: z.string(),
-  DROPS_MODULE_NAME: z.string(),
+  DROPS_PACKAGE_NAME: z.string(),
   COLLECTION_MODULE_NAME: z.string(),
   DROP_MODULE_NAME: z.string(),
 });
