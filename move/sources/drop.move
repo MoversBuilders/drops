@@ -105,6 +105,32 @@ module drops::drop {
         transfer::public_transfer(display, tx_context::sender(ctx));
     }
 
+    /// Return the drops of an address for a collection
+    public fun get_collection_drops_of_address(
+        address_drops_registry: &AddressDropsRegistry,
+        collection_id: ID,
+        address: address
+    ): vector<ID> {
+        if (!table::contains(&address_drops_registry.drops, address)) {
+            return vector::empty<ID>();
+        };
+        let drops_of_address = table::borrow(&address_drops_registry.drops, address);
+        if (!table::contains(drops_of_address, collection_id)) {
+            return vector::empty<ID>();
+        };
+
+        // Return a copy of the drops vector
+        let drops_vector = table::borrow(drops_of_address, collection_id);
+        let mut result = vector::empty<ID>();
+        let len = vector::length(drops_vector);
+        let mut i = 0;
+        while (i < len) {
+            vector::push_back(&mut result, *vector::borrow(drops_vector, i));
+            i = i + 1;
+        };
+        result
+    }
+
     /// Mint a new drop
     public(package) fun mint(
         address_drops_registry: &mut AddressDropsRegistry,

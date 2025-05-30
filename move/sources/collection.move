@@ -221,9 +221,6 @@ module drops::collection {
         receiver: address,
         ctx: &mut TxContext
     ) {
-        // If ONE_PER_ADDRESS (bit 0) is set, check if the address already has a drop
-        assert!(collection.flags & 0x0001 == 0, ENotImplemented);
-
         // Check if either REQUIRES_SECRET (bit 2) or REQUIRES_MERKLE_PROOF (bit 3) is set
         // If so, we need to use the appropriate mint function
         assert!(collection.flags & 0x000C == 0, EInvalidFunctionForFlags);
@@ -239,6 +236,16 @@ module drops::collection {
         // Check that the collection and drops registry are correctly linked
         assert!(collection.drops_registry == object::id(drops_registry), EWrongDropsRegistry);
         assert!(drops_registry.collection_id == object::id(collection), EWrongDropsRegistry);
+
+        // If ONE_PER_ADDRESS (bit 0) is set, check AddressDropsRegistry to see if the address already has a drop
+        if(collection.flags & 0x0001 == 0) {
+            let drops: vector<ID> = drops::drop::get_collection_drops_of_address(
+                address_drops_registry, 
+                object::id(collection),
+                receiver
+            );
+            assert!(vector::length(&drops) == 0, EOnePerAddress);
+        };
 
         let sequence_number = table::length(&drops_registry.drops);
         
