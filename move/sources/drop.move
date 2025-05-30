@@ -6,6 +6,16 @@ module drops::drop {
     use sui::package;
     use sui::event;
     use drops::helpers::{with_base_url};
+    use sui::table::{Self, Table};
+
+    // === Registry Structs ===
+    
+    /// Registry to track drops owned by an address, grouped by collection
+    /// address → (collection_id → vector<ID>)
+    public struct AddressDropsRegistry has key {
+        id: UID,
+        drops: Table<address, Table<ID, vector<ID>>>
+    }
 
     // === Object Structs ===
 
@@ -27,6 +37,7 @@ module drops::drop {
         drop_id: ID,
         collection_id: ID,
         minter: address,
+        receiver: address,
         timestamp: u64
     }
 
@@ -42,6 +53,13 @@ module drops::drop {
 
     /// Initialize the drop module
     fun init(otw: DROP, ctx: &mut TxContext) {
+        // Create and share the address drops registry
+        let address_drops_registry = AddressDropsRegistry {
+            id: object::new(ctx),
+            drops: table::new<address, Table<ID, vector<ID>>>(ctx),
+        };
+        transfer::share_object(address_drops_registry);
+
         // Create display for Drop type
         let publisher = package::claim(otw, ctx);
         let keys = vector[
@@ -84,12 +102,15 @@ module drops::drop {
 
     /// Mint a new drop
     public(package) fun mint(
+        address_drops_registry: &mut AddressDropsRegistry,
         collection_id: ID,
+        receiver: address,
         sequence_number: u64,
         randomness: Option<u16>,
         attributes: VecMap<String, vector<u8>>,
         ctx: &mut TxContext
     ): Drop {
+        // 1. Create the drop
         let drop = Drop {
             id: object::new(ctx),
             collection_id,
@@ -99,11 +120,27 @@ module drops::drop {
             attributes,
         };
 
-        // Emit mint event
+        // 2. Add the drop to the AddressDrops registry
+
+        // Get the table of <collection_id, vector<ID>> for the address
+        let drops_of_address = &mut address_drops_registry.drops;
+
+        // If address has no drops for this collection, create a new table
+        if (!table::contains(drops_of_address, receiver)) {
+            table::add(drops_of_address, receiver, table::new<ID, vector<ID>>(ctx));
+        };
+
+        // Add the drop to the receiver's drops vector for the collection
+        let drops_of_address_by_collection = table::borrow_mut(drops_of_address, receiver);
+        let drops_vector = table::borrow_mut(drops_of_address_by_collection, collection_id);
+        drops_vector.push_back(object::id(&drop));
+
+        // 3. Emit mint event
         event::emit(DropMintedEvent {
             drop_id: object::id(&drop),
             collection_id,
             minter: tx_context::sender(ctx),
+            receiver: receiver,
             timestamp: tx_context::epoch(ctx)
         });
 

@@ -5,7 +5,7 @@ module drops::collection {
     use sui::vec_map::{Self};
     use sui::package;
     use sui::display;
-    use drops::drop::Drop;
+    use drops::drop::{Drop, AddressDropsRegistry};
     use drops::helpers::{with_base_url, get_base_url};
 
     // === Error Codes ===
@@ -159,6 +159,7 @@ module drops::collection {
         mint_stop_time: u64,
         ctx: &mut TxContext
     ) {
+        // 1. Validate inputs
         // Check if either REQUIRES_SECRET (bit 2) or REQUIRES_MERKLE_PROOF (bit 3) is set
         // In that case, use the appropriate constructors
         assert!(flags & 0x000C == 0, EInvalidFunctionForFlags);
@@ -176,7 +177,7 @@ module drops::collection {
             lon: coords_lon,
         };
 
-        // 1. Create the collection
+        // 2. Create the collection
         // Use a dummy drops_registry ID to bypass circular dependency
         let mut collection = Collection {
             id: object::new(ctx),
@@ -193,20 +194,20 @@ module drops::collection {
             groth16_merkle,
         };
 
-        // 2. Create the drops registry
+        // 3. Create the drops registry
         let drops_registry = DropsRegistry {
             id: object::new(ctx),
             collection_id: object::id(&collection),
             drops: table::new<u64, ID>(ctx),
         };
 
-        // 3. Update the collection to reference the correct drops_registry ID
+        // 4. Update the collection to reference the correct drops_registry ID
         collection.drops_registry = object::id(&drops_registry);
 
-        // 4. Transfer the drops registry
+        // 5. Transfer the drops registry
         transfer::share_object(drops_registry);
 
-        // 5. Add to CollectionsRegistry and transfer
+        // 6. Add to CollectionsRegistry and transfer
         let sequence_number = table::length(&collections_registry.collections);
         table::add(&mut collections_registry.collections, sequence_number, object::id(&collection));
         transfer::transfer(collection, tx_context::sender(ctx));
@@ -216,6 +217,8 @@ module drops::collection {
     public entry fun mint(
         collection: &Collection,
         drops_registry: &mut DropsRegistry,
+        address_drops_registry: &mut AddressDropsRegistry,
+        receiver: address,
         ctx: &mut TxContext
     ) {
         // If ONE_PER_ADDRESS (bit 0) is set, check if the address already has a drop
@@ -241,7 +244,9 @@ module drops::collection {
         
         // Delegate to drop::mint
         let drop: Drop = drops::drop::mint(
+            address_drops_registry,
             object::id(collection),
+            receiver,
             sequence_number,
             option::none(),
             vec_map::empty(),
